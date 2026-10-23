@@ -52,8 +52,7 @@ public class IdleAdventurerPlugin extends Plugin
 		saveCodec = new SaveCodec(gson);
 		engine = new GameEngine(saveCodec.decode(configManager.getConfiguration(CONFIG_GROUP, SAVE_KEY)));
 
-		panel = new IdleAdventurerPanel();
-		panel.update(engine.getState());
+		panel = new IdleAdventurerPanel(engine);
 
 		navButton = NavigationButton.builder()
 			.tooltip("Idle Adventurer")
@@ -88,7 +87,7 @@ public class IdleAdventurerPlugin extends Plugin
 	private void onTick()
 	{
 		engine.tick();
-		panel.update(engine.getState());
+		panel.update();
 		if (engine.getState().totalTicks % SAVE_INTERVAL_TICKS == 0)
 		{
 			save();
