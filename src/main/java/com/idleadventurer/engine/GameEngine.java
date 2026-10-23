@@ -15,6 +15,8 @@ public class GameEngine
 	static final int WALK_TICKS = 3;
 	static final int RESPAWN_TICKS = 5;
 	static final int PLAYER_ATTACK_TICKS = 4;
+	/** Eating in a fight delays the next swing, as in OSRS. */
+	static final int EAT_DELAY_TICKS = 3;
 	/** One hit point is restored this often, so a long fight is not a coin flip. */
 	static final int REGEN_TICKS = 10;
 	/** Multiplier on OSRS XP rates; 1 matches OSRS (4 XP per damage, 1.33 to Hitpoints). */
@@ -95,6 +97,94 @@ public class GameEngine
 	public int getLastMonsterHit()
 	{
 		return lastMonsterHit;
+	}
+
+	/** The worn item in a slot, or null if nothing is worn there. */
+	public GearItem getEquipped(Slot slot)
+	{
+		int tier = state.gearTier[slot.ordinal()];
+		return tier < 0 ? null : Gear.get(slot, tier);
+	}
+
+	public int attackBonus()
+	{
+		GearItem weapon = getEquipped(Slot.WEAPON);
+		return weapon == null ? 0 : weapon.getAttackBonus();
+	}
+
+	public int strengthBonus()
+	{
+		GearItem weapon = getEquipped(Slot.WEAPON);
+		return weapon == null ? 0 : weapon.getStrengthBonus();
+	}
+
+	public int defenceBonus()
+	{
+		int total = 0;
+		for (Slot slot : Slot.values())
+		{
+			GearItem item = getEquipped(slot);
+			total += item == null ? 0 : item.getDefenceBonus();
+		}
+		return total;
+	}
+
+	/** Why a piece of gear cannot be bought right now, or null if it can. */
+	public String gearBlocker(GearItem item)
+	{
+		if (item.getTier() <= state.gearTier[item.getSlot().ordinal()])
+		{
+			return "Already owned";
+		}
+		if (state.level(item.getRequiredSkill()) < item.getRequiredLevel())
+		{
+			return "Needs " + item.getRequiredSkill().getDisplayName() + " " + item.getRequiredLevel();
+		}
+		if (state.coins < item.getCost())
+		{
+			return "Not enough coins";
+		}
+		return null;
+	}
+
+	/** Buys and wears the item. Returns false, changing nothing, if gearBlocker says no. */
+	public boolean buyGear(GearItem item)
+	{
+		if (gearBlocker(item) != null)
+		{
+			return false;
+		}
+		state.coins -= item.getCost();
+		state.gearTier[item.getSlot().ordinal()] = item.getTier();
+		return true;
+	}
+
+	public boolean buyFood(int foodIndex, int quantity)
+	{
+		long price = (long) Food.ALL.get(foodIndex).getCost() * quantity;
+		if (quantity <= 0 || state.coins < price)
+		{
+			return false;
+		}
+		state.coins -= price;
+		state.foodCount[foodIndex] += quantity;
+		return true;
+	}
+
+	/** Eats one portion if owned and there is health to restore. */
+	public boolean eat(int foodIndex)
+	{
+		if (phase == Phase.DEAD || state.foodCount[foodIndex] <= 0 || playerHp >= getPlayerMaxHp())
+		{
+			return false;
+		}
+		state.foodCount[foodIndex]--;
+		playerHp = Math.min(getPlayerMaxHp(), playerHp + Food.ALL.get(foodIndex).getHeal());
+		if (phase == Phase.FIGHTING)
+		{
+			playerCooldown += EAT_DELAY_TICKS;
+		}
+		return true;
 	}
 
 	public void setTargetMonster(String monsterId)
@@ -189,10 +279,10 @@ public class GameEngine
 	private void playerAttack()
 	{
 		int damage = 0;
-		double chance = CombatMath.playerHitChance(state.level(Skill.ATTACK), monster.getDefenceLevel());
+		double chance = CombatMath.playerHitChance(state.level(Skill.ATTACK), attackBonus(), monster.getDefenceLevel());
 		if (random.nextDouble() < chance)
 		{
-			damage = 1 + random.nextInt(CombatMath.playerMaxHit(state.level(Skill.STRENGTH)));
+			damage = 1 + random.nextInt(CombatMath.playerMaxHit(state.level(Skill.STRENGTH), strengthBonus()));
 			damage = Math.min(damage, monsterHp);
 		}
 		monsterHp -= damage;
@@ -203,7 +293,7 @@ public class GameEngine
 	private void monsterAttack()
 	{
 		int damage = 0;
-		double chance = CombatMath.monsterHitChance(monster.getAttackLevel(), state.level(Skill.DEFENCE));
+		double chance = CombatMath.monsterHitChance(monster.getAttackLevel(), state.level(Skill.DEFENCE), defenceBonus());
 		if (random.nextDouble() < chance)
 		{
 			damage = Math.min(1 + random.nextInt(monster.getMaxHit()), playerHp);
