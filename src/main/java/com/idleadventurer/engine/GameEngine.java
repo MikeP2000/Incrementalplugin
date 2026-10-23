@@ -17,8 +17,8 @@ public class GameEngine
 	static final int PLAYER_ATTACK_TICKS = 4;
 	/** One hit point is restored this often, so a long fight is not a coin flip. */
 	static final int REGEN_TICKS = 10;
-	/** OSRS gives 4 XP per damage; the idle pace multiplies that so early levels take minutes, not hours. */
-	static final double XP_RATE = 6;
+	/** Multiplier on OSRS XP rates; 1 matches OSRS (4 XP per damage, 1.33 to Hitpoints). */
+	static final double XP_RATE = 1;
 	static final double XP_PER_DAMAGE = 4 * XP_RATE;
 	static final double HITPOINTS_XP_PER_DAMAGE = 1.33 * XP_RATE;
 
