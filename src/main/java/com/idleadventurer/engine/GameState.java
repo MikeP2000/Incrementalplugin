@@ -9,7 +9,7 @@ import java.util.Arrays;
 public class GameState
 {
 	/** Bumped when the save layout changes, so old saves can be migrated. */
-	public static final int CURRENT_VERSION = 5;
+	public static final int CURRENT_VERSION = 6;
 
 	/** Hitpoints start at level 10, as in OSRS. */
 	public static final double STARTING_HITPOINTS_XP = 1154;
@@ -61,6 +61,22 @@ public class GameState
 
 	/** Which skill receives the 4 XP per damage. */
 	public Skill trainingSkill = Skill.STRENGTH;
+
+	/** Prayers the player wants on; switched back on after a respawn or a prayer potion. */
+	public boolean[] preferredPrayers = new boolean[Prayer.ALL.size()];
+
+	/** Automation switches; see {@link GameEngine} for what each one does. */
+	public boolean autoEat = true;
+
+	/** Eat when health falls to this percentage of the maximum. */
+	public int autoEatPercent = 50;
+	public boolean autoPotion = true;
+	public boolean autoBury = true;
+	public boolean autoPrayer = true;
+	public boolean autoAdvance;
+
+	/** Index into {@link Food#ALL} to keep stocked, or -1 for none. */
+	public int autoBuyFood = -1;
 
 	private static int[] newGearTiers()
 	{
@@ -122,6 +138,12 @@ public class GameState
 		{
 			potionCount = new int[Potion.ALL.size()];
 		}
+		if (preferredPrayers == null || preferredPrayers.length != Prayer.ALL.size())
+		{
+			preferredPrayers = new boolean[Prayer.ALL.size()];
+		}
+		autoEatPercent = Math.max(10, Math.min(autoEatPercent, 90));
+		autoBuyFood = Math.max(-1, Math.min(autoBuyFood, Food.ALL.size() - 1));
 		prayerPoints = Math.max(0, Math.min(prayerPoints, level(Skill.PRAYER)));
 		if (prayerPoints <= 0)
 		{
