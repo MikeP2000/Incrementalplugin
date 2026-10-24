@@ -40,7 +40,7 @@ public class GameEngineTest
 		GameEngine engine = new GameEngine(state, new Random(1));
 		tick(engine, 600);
 		assertTrue(state.kills > 0);
-		assertEquals(state.kills, state.bones);
+		assertEquals(state.kills, engine.totalBones());
 		assertTrue(state.coins >= state.kills * 2);
 		assertTrue(state.xp(Skill.STRENGTH) > 0);
 		assertTrue(state.xp(Skill.HITPOINTS) > GameState.STARTING_HITPOINTS_XP);
@@ -285,5 +285,215 @@ public class GameEngineTest
 			assertEquals(1, bosses);
 			assertTrue(zone.getBoss().isBoss());
 		}
+	}
+
+	private static void setLevel(GameState state, Skill skill, int level)
+	{
+		state.skillXp[skill.ordinal()] = XpTable.xpForLevel(level);
+	}
+
+	@Test
+	public void buryingBonesGivesPrayerXpAndPoints()
+	{
+		GameState state = new GameState();
+		state.boneCount[0] = 20;
+		state.boneCount[2] = 1;
+		GameEngine engine = new GameEngine(state, new Random(1));
+		assertEquals(21, engine.buryBones());
+		assertEquals(0, engine.totalBones());
+		assertEquals(20 * 4.5 + 72, state.xp(Skill.PRAYER), 0.001);
+		assertEquals(state.level(Skill.PRAYER), engine.getPrayerMaxPoints());
+		// Each level gained also adds a point to the pool.
+		assertEquals(engine.getPrayerMaxPoints(), engine.getPrayerPoints(), 0.001);
+		assertEquals(0, engine.buryBones());
+	}
+
+	@Test
+	public void killsDropTheMonstersBoneType()
+	{
+		GameState state = new GameState();
+		GameEngine engine = strongPlayer(state, 1);
+		state.unlockedZones = 5;
+		engine.setTargetMonster("abyssal_demon");
+		tickUntilKills(engine, 1);
+		assertEquals(1, state.boneCount[2]);
+		assertEquals(0, state.boneCount[0]);
+	}
+
+	@Test
+	public void prayersNeedLevelAndPoints()
+	{
+		GameState state = new GameState();
+		GameEngine engine = new GameEngine(state, new Random(1));
+		int piety = Prayer.ALL.size() - 1;
+		assertEquals("Needs Prayer 70", engine.prayerBlocker(piety));
+		assertEquals(false, engine.togglePrayer(piety));
+		assertEquals(null, engine.prayerBlocker(0));
+		assertTrue(engine.togglePrayer(0));
+		assertTrue(engine.isPrayerActive(0));
+		assertTrue(engine.togglePrayer(0));
+		assertEquals(false, engine.isPrayerActive(0));
+	}
+
+	@Test
+	public void chivalryAndPietyAlsoNeedDefence()
+	{
+		GameState state = new GameState();
+		setLevel(state, Skill.PRAYER, 70);
+		state.prayerPoints = 70;
+		GameEngine engine = new GameEngine(state, new Random(1));
+		int piety = Prayer.ALL.size() - 1;
+		assertEquals("Needs Defence 70", engine.prayerBlocker(piety));
+		setLevel(state, Skill.DEFENCE, 70);
+		assertEquals(null, engine.prayerBlocker(piety));
+	}
+
+	@Test
+	public void prayersOnTheSameStatReplaceEachOther()
+	{
+		GameState state = new GameState();
+		setLevel(state, Skill.PRAYER, 20);
+		state.prayerPoints = 20;
+		GameEngine engine = new GameEngine(state, new Random(1));
+		engine.togglePrayer(1); // Burst of Strength
+		engine.togglePrayer(0); // Thick Skin: different stat, both stay on
+		assertTrue(engine.isPrayerActive(0) && engine.isPrayerActive(1));
+		engine.togglePrayer(4); // Superhuman Strength replaces Burst
+		assertEquals(false, engine.isPrayerActive(1));
+		assertTrue(engine.isPrayerActive(4));
+		assertTrue(engine.isPrayerActive(0));
+	}
+
+	@Test
+	public void prayerBoostsEffectiveLevels()
+	{
+		GameState state = new GameState();
+		setLevel(state, Skill.PRAYER, 70);
+		setLevel(state, Skill.DEFENCE, 70);
+		setLevel(state, Skill.STRENGTH, 100 - 1);
+		state.prayerPoints = 70;
+		GameEngine engine = new GameEngine(state, new Random(1));
+		assertEquals(99, engine.effectiveLevel(Skill.STRENGTH));
+		engine.togglePrayer(Prayer.ALL.size() - 1); // Piety
+		assertEquals(99 * 123 / 100, engine.effectiveLevel(Skill.STRENGTH));
+		assertEquals(70 * 125 / 100, engine.effectiveLevel(Skill.DEFENCE));
+	}
+
+	@Test
+	public void prayerDrainsAndSwitchesOffAtZero()
+	{
+		GameState state = new GameState();
+		GameEngine engine = new GameEngine(state, new Random(1));
+		engine.togglePrayer(0); // Thick Skin, 1 point every 300 ticks
+		tick(engine, 150);
+		assertEquals(0.5, engine.getPrayerPoints(), 0.01);
+		assertTrue(engine.isPrayerActive(0));
+		tick(engine, 150);
+		assertEquals(0, engine.getPrayerPoints(), 0.001);
+		assertEquals(false, engine.isPrayerActive(0));
+		assertEquals("No prayer points", engine.prayerBlocker(0));
+	}
+
+	@Test
+	public void potionsNeedLevelAndCoins()
+	{
+		GameState state = new GameState();
+		state.coins = 1000;
+		GameEngine engine = new GameEngine(state, new Random(1));
+		int superAttack = 3;
+		assertEquals("Needs Attack 30", engine.potionBlocker(superAttack, 1));
+		assertEquals(false, engine.buyPotion(superAttack, 1));
+		setLevel(state, Skill.ATTACK, 30);
+		assertTrue(engine.buyPotion(superAttack, 2));
+		assertEquals(1000 - 240, state.coins);
+		assertEquals(2, state.potionCount[superAttack]);
+		assertEquals("Not enough coins", engine.potionBlocker(superAttack, 50));
+	}
+
+	@Test
+	public void boostPotionsRaiseDecayAndAreNotWasted()
+	{
+		GameState state = new GameState();
+		state.coins = 100;
+		setLevel(state, Skill.STRENGTH, 40);
+		GameEngine engine = new GameEngine(state, new Random(1));
+		assertTrue(engine.buyPotion(1, 2)); // Strength potion: +3 and 10%
+		assertTrue(engine.drink(1));
+		assertEquals(3 + 4, engine.getBoost(Skill.STRENGTH));
+		assertEquals(47, engine.effectiveLevel(Skill.STRENGTH));
+		// Already at full boost: drinking again would waste it.
+		assertEquals(false, engine.drink(1));
+		assertEquals(1, state.potionCount[1]);
+		tick(engine, GameEngine.BOOST_DECAY_TICKS);
+		assertEquals(6, engine.getBoost(Skill.STRENGTH));
+		tick(engine, GameEngine.BOOST_DECAY_TICKS * 10);
+		assertEquals(0, engine.getBoost(Skill.STRENGTH));
+	}
+
+	@Test
+	public void prayerPotionRestoresUpToTheMaximum()
+	{
+		GameState state = new GameState();
+		state.coins = 1000;
+		setLevel(state, Skill.PRAYER, 40);
+		state.prayerPoints = 5;
+		GameEngine engine = new GameEngine(state, new Random(1));
+		int prayerPotion = Potion.ALL.size() - 1;
+		assertTrue(engine.buyPotion(prayerPotion, 3));
+		assertTrue(engine.drink(prayerPotion));
+		assertEquals(5 + 7 + 10, engine.getPrayerPoints(), 0.001);
+		assertTrue(engine.drink(prayerPotion));
+		assertTrue(engine.drink(prayerPotion));
+		assertEquals(40, engine.getPrayerPoints(), 0.001);
+		assertEquals(false, engine.drink(prayerPotion));
+	}
+
+	@Test
+	public void dyingSwitchesPrayersOffAndWearsOffBoosts()
+	{
+		GameState state = new GameState();
+		state.coins = 100;
+		GameEngine engine = new GameEngine(state, new Random(3));
+		engine.buyPotion(0, 1);
+		engine.drink(0);
+		engine.togglePrayer(0);
+		state.unlockedZones = 5;
+		engine.setTargetMonster("bloodveld");
+		int guard = 0;
+		while (state.deaths == 0 && guard++ < 5000)
+		{
+			engine.tick();
+		}
+		assertEquals(1, state.deaths);
+		assertEquals(false, engine.isPrayerActive(0));
+		assertEquals(0, engine.getBoost(Skill.ATTACK));
+		tick(engine, GameEngine.RESPAWN_TICKS);
+		assertEquals(engine.getPrayerMaxPoints(), engine.getPrayerPoints(), 0.001);
+	}
+
+	@Test
+	public void oldUntypedBonesMoveIntoPlainBones()
+	{
+		GameState state = new GameState();
+		state.bones = 12;
+		state.boneCount = null;
+		state.activePrayers = null;
+		state.skillBoost = null;
+		state.potionCount = null;
+		new GameEngine(state, new Random(1));
+		assertEquals(12, state.boneCount[0]);
+		assertEquals(0, state.bones);
+		assertEquals(Prayer.ALL.size(), state.activePrayers.length);
+	}
+
+	@Test
+	public void oldSaveWithoutPrayerSkillLoads()
+	{
+		GameState state = new GameState();
+		state.skillXp = new double[]{100, 200, 300, 1500};
+		new GameEngine(state, new Random(1));
+		assertEquals(Skill.values().length, state.skillXp.length);
+		assertEquals(1500, state.xp(Skill.HITPOINTS), 0);
+		assertEquals(0, state.xp(Skill.PRAYER), 0);
 	}
 }

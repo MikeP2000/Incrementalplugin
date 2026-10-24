@@ -1,5 +1,7 @@
 package com.idleadventurer.engine;
 
+import java.util.Arrays;
+
 /**
  * All persistent progress. Plain fields so Gson can round-trip it; no RuneLite dependencies.
  * New fields keep their initialisers when an older save lacks them, so adding fields is safe.
@@ -7,7 +9,7 @@ package com.idleadventurer.engine;
 public class GameState
 {
 	/** Bumped when the save layout changes, so old saves can be migrated. */
-	public static final int CURRENT_VERSION = 4;
+	public static final int CURRENT_VERSION = 5;
 
 	/** Hitpoints start at level 10, as in OSRS. */
 	public static final double STARTING_HITPOINTS_XP = 1154;
@@ -24,6 +26,11 @@ public class GameState
 	public double[] skillXp = newSkillXp();
 
 	public long coins;
+
+	/** Bones owned per entry of {@link BoneType#ALL}. */
+	public long[] boneCount = new long[BoneType.ALL.size()];
+
+	/** Only read from saves made before bones had types; moved into {@link #boneCount} on load. */
 	public long bones;
 	public long kills;
 	public long deaths;
@@ -33,6 +40,18 @@ public class GameState
 
 	/** Food owned per entry of {@link Food#ALL}. */
 	public int[] foodCount = new int[Food.ALL.size()];
+
+	/** Current prayer points; the maximum is the Prayer level. */
+	public double prayerPoints = 1;
+
+	/** Which prayers are switched on, per entry of {@link Prayer#ALL}. */
+	public boolean[] activePrayers = new boolean[Prayer.ALL.size()];
+
+	/** Temporary levels from potions per {@link Skill}, fading by one every minute. */
+	public int[] skillBoost = new int[Skill.values().length];
+
+	/** Potions owned per entry of {@link Potion#ALL}. */
+	public int[] potionCount = new int[Potion.ALL.size()];
 
 	/** How many zones can be entered; beating a zone's boss unlocks the next. */
 	public int unlockedZones = 1;
@@ -46,7 +65,7 @@ public class GameState
 	private static int[] newGearTiers()
 	{
 		int[] tiers = new int[Slot.values().length];
-		java.util.Arrays.fill(tiers, -1);
+		Arrays.fill(tiers, -1);
 		return tiers;
 	}
 
@@ -84,6 +103,29 @@ public class GameState
 		if (trainingSkill == null || !trainingSkill.isTrainable())
 		{
 			trainingSkill = Skill.STRENGTH;
+		}
+		if (boneCount == null || boneCount.length != BoneType.ALL.size())
+		{
+			boneCount = new long[BoneType.ALL.size()];
+		}
+		boneCount[0] += bones;
+		bones = 0;
+		if (activePrayers == null || activePrayers.length != Prayer.ALL.size())
+		{
+			activePrayers = new boolean[Prayer.ALL.size()];
+		}
+		if (skillBoost == null || skillBoost.length != Skill.values().length)
+		{
+			skillBoost = new int[Skill.values().length];
+		}
+		if (potionCount == null || potionCount.length != Potion.ALL.size())
+		{
+			potionCount = new int[Potion.ALL.size()];
+		}
+		prayerPoints = Math.max(0, Math.min(prayerPoints, level(Skill.PRAYER)));
+		if (prayerPoints <= 0)
+		{
+			Arrays.fill(activePrayers, false);
 		}
 		unlockedZones = Math.max(1, Math.min(unlockedZones, Monsters.ZONES.size()));
 		if (targetMonster == null || Monsters.zoneIndex(Monsters.byId(targetMonster)) >= unlockedZones)

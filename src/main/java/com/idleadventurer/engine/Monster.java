@@ -16,9 +16,10 @@ public class Monster
 	private final int minCoins;
 	private final int maxCoins;
 	private final boolean boss;
+	private final int boneType;
 
 	public Monster(String id, String name, int combatLevel, int hitpoints, int attackLevel, int defenceLevel,
-		int maxHit, int attackSpeedTicks, int minCoins, int maxCoins, boolean boss)
+		int maxHit, int attackSpeedTicks, int minCoins, int maxCoins, boolean boss, int boneType)
 	{
 		this.id = id;
 		this.name = name;
@@ -31,6 +32,7 @@ public class Monster
 		this.minCoins = minCoins;
 		this.maxCoins = maxCoins;
 		this.boss = boss;
+		this.boneType = boneType;
 	}
 
 	public String getId()
@@ -87,6 +89,12 @@ public class Monster
 	public int getMaxCoins()
 	{
 		return maxCoins;
+	}
+
+	/** Index into {@link BoneType#ALL} of the bones this monster drops. */
+	public int getBoneType()
+	{
+		return boneType;
 	}
 
 	/** Beating a zone's boss for the first time unlocks the next zone. */
