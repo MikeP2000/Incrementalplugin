@@ -30,6 +30,13 @@ public class GameEngine
 	static final int BOOST_DECAY_TICKS = 100;
 	/** Prayer drain effect is spread over this many ticks: effect 1 costs a point every 3 minutes. */
 	static final int PRAYER_DRAIN_DIVISOR = 300;
+	/** Offline progress stops after 12 hours away. */
+	public static final long MAX_OFFLINE_TICKS = 12L * 60 * 60 * 1000 / TICK_MILLIS;
+	/** Auto-buy tops food up to this many when fewer than {@link #RESTOCK_BELOW} are left. */
+	static final int RESTOCK_TO = 30;
+	static final int RESTOCK_BELOW = 10;
+	/** Auto-drink a Prayer potion when points fall to this share of the maximum. */
+	static final double PRAYER_POTION_FRACTION = 0.25;
 
 	private final GameState state;
 	private final Random random;
@@ -259,6 +266,7 @@ public class GameEngine
 		if (state.activePrayers[prayerIndex])
 		{
 			state.activePrayers[prayerIndex] = false;
+			state.preferredPrayers[prayerIndex] = false;
 			return true;
 		}
 		if (prayerBlocker(prayerIndex) != null)
@@ -271,9 +279,11 @@ public class GameEngine
 			if (state.activePrayers[i] && Prayer.ALL.get(i).conflictsWith(prayer))
 			{
 				state.activePrayers[i] = false;
+				state.preferredPrayers[i] = false;
 			}
 		}
 		state.activePrayers[prayerIndex] = true;
+		state.preferredPrayers[prayerIndex] = true;
 		return true;
 	}
 
@@ -427,6 +437,10 @@ public class GameEngine
 			}
 		}
 		drainPrayer();
+		if (phase != Phase.DEAD)
+		{
+			automate();
+		}
 
 		phaseTicks++;
 		switch (phase)
@@ -449,6 +463,137 @@ public class GameEngine
 				}
 				break;
 		}
+	}
+
+	/**
+	 * Runs the automation the player has switched on. Eating and drinking only happen mid-fight,
+	 * so nothing is wasted while walking or regenerating for free.
+	 */
+	private void automate()
+	{
+		if (state.autoBuyFood >= 0)
+		{
+			restockFood();
+		}
+		if (state.autoPrayer)
+		{
+			restorePrayers();
+		}
+		if (phase != Phase.FIGHTING)
+		{
+			return;
+		}
+		if (state.autoPotion)
+		{
+			drinkPotions();
+		}
+		if (state.autoEat && playerHp * 100 <= state.autoEatPercent * getPlayerMaxHp())
+		{
+			autoEat();
+		}
+	}
+
+	/** Eats the biggest food that fits the missing health, or the smallest one if none does. */
+	private void autoEat()
+	{
+		int missing = getPlayerMaxHp() - playerHp;
+		int best = -1;
+		for (int i = 0; i < Food.ALL.size(); i++)
+		{
+			if (state.foodCount[i] <= 0)
+			{
+				continue;
+			}
+			int heal = Food.ALL.get(i).getHeal();
+			if (best < 0)
+			{
+				best = i;
+			}
+			else
+			{
+				int bestHeal = Food.ALL.get(best).getHeal();
+				boolean fits = heal <= missing;
+				boolean bestFits = bestHeal <= missing;
+				if (fits ? (!bestFits || heal > bestHeal) : (!bestFits && heal < bestHeal))
+				{
+					best = i;
+				}
+			}
+		}
+		if (best >= 0)
+		{
+			eat(best);
+		}
+	}
+
+	private void restockFood()
+	{
+		int index = state.autoBuyFood;
+		if (state.foodCount[index] >= RESTOCK_BELOW)
+		{
+			return;
+		}
+		long affordable = state.coins / Food.ALL.get(index).getCost();
+		int quantity = (int) Math.min(RESTOCK_TO - state.foodCount[index], affordable);
+		if (quantity > 0)
+		{
+			buyFood(index, quantity);
+		}
+	}
+
+	private void drinkPotions()
+	{
+		for (int i = Potion.ALL.size() - 1; i >= 0; i--)
+		{
+			Potion potion = Potion.ALL.get(i);
+			if (potion.isPrayerRestore())
+			{
+				boolean praying = false;
+				for (boolean on : state.activePrayers)
+				{
+					praying |= on;
+				}
+				if (praying && state.prayerPoints <= getPrayerMaxPoints() * PRAYER_POTION_FRACTION)
+				{
+					drink(i);
+				}
+			}
+			else if (state.skillBoost[potion.getBoostedSkill().ordinal()] == 0)
+			{
+				// Highest tier first, so a Super potion is used before a plain one.
+				drink(i);
+			}
+		}
+	}
+
+	private void restorePrayers()
+	{
+		if (state.prayerPoints <= 0)
+		{
+			return;
+		}
+		for (int i = 0; i < Prayer.ALL.size(); i++)
+		{
+			if (state.preferredPrayers[i] && !state.activePrayers[i] && prayerBlocker(i) == null)
+			{
+				togglePrayer(i);
+			}
+		}
+	}
+
+	/**
+	 * Plays the game forward without a display, for time spent away. Returns what changed.
+	 */
+	public OfflineReport fastForward(long ticks)
+	{
+		OfflineReport.Snapshot before = OfflineReport.snapshot(state);
+		long count = Math.min(ticks, MAX_OFFLINE_TICKS);
+		for (long i = 0; i < count; i++)
+		{
+			tick();
+		}
+		unlockNoticeTicks = 0;
+		return OfflineReport.between(before, state, count);
 	}
 
 	private void startWalking()
@@ -535,6 +680,10 @@ public class GameEngine
 		state.kills++;
 		state.boneCount[monster.getBoneType()]++;
 		state.coins += monster.getMinCoins() + random.nextInt(monster.getMaxCoins() - monster.getMinCoins() + 1);
+		if (state.autoBury)
+		{
+			buryBones();
+		}
 		if (monster.isBoss())
 		{
 			unlockNextZone();
@@ -550,6 +699,10 @@ public class GameEngine
 			state.unlockedZones++;
 			unlockNotice = Monsters.ZONES.get(next).getName();
 			unlockNoticeTicks = UNLOCK_NOTICE_TICKS;
+			if (state.autoAdvance)
+			{
+				state.targetMonster = Monsters.ZONES.get(next).getMonsters().get(0).getId();
+			}
 		}
 	}
 

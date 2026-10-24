@@ -37,6 +37,7 @@ public class GameEngineTest
 	public void killingChickensGivesLootAndXp()
 	{
 		GameState state = new GameState();
+		state.autoBury = false;
 		GameEngine engine = new GameEngine(state, new Random(1));
 		tick(engine, 600);
 		assertTrue(state.kills > 0);
@@ -312,6 +313,7 @@ public class GameEngineTest
 	public void killsDropTheMonstersBoneType()
 	{
 		GameState state = new GameState();
+		state.autoBury = false;
 		GameEngine engine = strongPlayer(state, 1);
 		state.unlockedZones = 5;
 		engine.setTargetMonster("abyssal_demon");
@@ -414,6 +416,7 @@ public class GameEngineTest
 	public void boostPotionsRaiseDecayAndAreNotWasted()
 	{
 		GameState state = new GameState();
+		state.autoPotion = false;
 		state.coins = 100;
 		setLevel(state, Skill.STRENGTH, 40);
 		GameEngine engine = new GameEngine(state, new Random(1));
