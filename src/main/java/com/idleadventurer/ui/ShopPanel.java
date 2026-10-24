@@ -4,6 +4,7 @@ import com.idleadventurer.engine.Food;
 import com.idleadventurer.engine.Gear;
 import com.idleadventurer.engine.GameEngine;
 import com.idleadventurer.engine.GearItem;
+import com.idleadventurer.engine.Potion;
 import com.idleadventurer.engine.Slot;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -38,6 +39,7 @@ public class ShopPanel extends JPanel
 	private final JLabel coinsLabel = new JLabel();
 	private final List<GearRow> gearRows = new ArrayList<>();
 	private final List<FoodRow> foodRows = new ArrayList<>();
+	private final List<PotionRow> potionRows = new ArrayList<>();
 
 	public ShopPanel(GameEngine engine)
 	{
@@ -63,6 +65,14 @@ public class ShopPanel extends JPanel
 		{
 			FoodRow row = new FoodRow(i);
 			foodRows.add(row);
+			addPart(content, row.panel);
+		}
+
+		addPart(content, heading("Potions"));
+		for (int i = 0; i < Potion.ALL.size(); i++)
+		{
+			PotionRow row = new PotionRow(i);
+			potionRows.add(row);
 			addPart(content, row.panel);
 		}
 
@@ -92,6 +102,10 @@ public class ShopPanel extends JPanel
 			row.refresh();
 		}
 		for (FoodRow row : foodRows)
+		{
+			row.refresh();
+		}
+		for (PotionRow row : potionRows)
 		{
 			row.refresh();
 		}
@@ -243,6 +257,45 @@ public class ShopPanel extends JPanel
 			nameLabel.setText(food.getName() + " (heals " + food.getHeal() + ")");
 			detailLabel.setText(numbers.format(food.getCost()) + "c each · have " + engine.getState().foodCount[index]);
 			buyButton.setEnabled(engine.getState().coins >= (long) food.getCost() * BULK_FOOD);
+		}
+	}
+
+	private class PotionRow
+	{
+		private final int index;
+		private final JLabel nameLabel = new JLabel(" ");
+		private final JLabel detailLabel = small(ColorScheme.LIGHT_GRAY_COLOR);
+		private final JButton buyButton = new JButton("Buy " + BULK_FOOD);
+		private final JPanel panel;
+
+		PotionRow(int index)
+		{
+			this.index = index;
+			nameLabel.setForeground(Color.WHITE);
+			buyButton.setFocusable(false);
+			buyButton.setMargin(new java.awt.Insets(2, 6, 2, 6));
+			buyButton.addActionListener(e ->
+			{
+				engine.buyPotion(index, BULK_FOOD);
+				update();
+			});
+			panel = row((JComponent) Box.createHorizontalStrut(16), textBlock(nameLabel, detailLabel), buyButton);
+		}
+
+		void refresh()
+		{
+			Potion potion = Potion.ALL.get(index);
+			String effect = potion.isPrayerRestore()
+				? "restores " + potion.restoreFor(engine.getPrayerMaxPoints())
+				: "+" + potion.getFlatBoost() + " & " + potion.getPercentBoost() + "%";
+			nameLabel.setText(potion.getName() + " x" + engine.getState().potionCount[index]);
+			String blocker = engine.potionBlocker(index, BULK_FOOD);
+			boolean levelBlocked = blocker != null && blocker.startsWith("Needs");
+			detailLabel.setText(levelBlocked
+				? numbers.format(potion.getCost()) + "c · " + blocker
+				: effect + " · " + numbers.format(potion.getCost()) + "c each");
+			detailLabel.setForeground(levelBlocked ? new Color(230, 110, 90) : ColorScheme.LIGHT_GRAY_COLOR);
+			buyButton.setEnabled(blocker == null);
 		}
 	}
 }

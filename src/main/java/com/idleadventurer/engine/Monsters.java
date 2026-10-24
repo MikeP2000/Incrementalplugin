@@ -13,9 +13,9 @@ public final class Monsters
 {
 	public static final List<Zone> ZONES = Collections.unmodifiableList(Arrays.asList(
 		new Zone("Lumbridge", Arrays.asList(
-			new Monster("chicken", "Chicken", 1, 3, 1, 1, 1, 4, 2, 6, false),
-			new Monster("cow", "Cow", 2, 8, 1, 1, 1, 4, 5, 15, false),
-			new Monster("goblin", "Goblin", 5, 13, 1, 5, 2, 4, 10, 30, false),
+			new Monster("chicken", "Chicken", 1, 3, 1, 1, 1, 4, 2, 6, false, 0),
+			new Monster("cow", "Cow", 2, 8, 1, 1, 1, 4, 5, 15, false, 0),
+			new Monster("goblin", "Goblin", 5, 13, 1, 5, 2, 4, 10, 30, false, 0),
 			boss("goblin_champion", "Goblin Champion", 12))),
 		new Zone("Varrock Sewers", Arrays.asList(
 			normal("giant_rat", "Giant rat", 9),
@@ -30,7 +30,7 @@ public final class Monsters
 		new Zone("Taverley Dungeon", Arrays.asList(
 			normal("ice_warrior", "Ice warrior", 50),
 			normal("lesser_demon", "Lesser demon", 60),
-			normal("blue_dragon", "Blue dragon", 70),
+			normal("blue_dragon", "Blue dragon", 70, 2),
 			boss("demon_champion", "Demon Champion", 92))),
 		new Zone("Slayer Tower", Arrays.asList(
 			normal("bloodveld", "Bloodveld", 80),
@@ -55,14 +55,25 @@ public final class Monsters
 	{
 	}
 
+	/** Bones by level: plain bones early, big bones in the middle, dragon bones at the top. */
+	private static int boneTypeFor(int level)
+	{
+		return level < 30 ? 0 : level < 75 ? 1 : 2;
+	}
+
 	private static Monster normal(String id, String name, int level)
+	{
+		return normal(id, name, level, boneTypeFor(level));
+	}
+
+	private static Monster normal(String id, String name, int level, int boneType)
 	{
 		int hitpoints = (int) Math.round(3 + 1.3 * level);
 		int defence = Math.max(1, (int) Math.round(0.9 * level));
 		int maxHit = Math.max(1, (int) Math.round(1 + level / 9.0));
 		int coins = (int) Math.round(2.5 * Math.pow(level, 1.5));
 		return new Monster(id, name, level, hitpoints, level, defence, maxHit, 4,
-			(int) Math.round(coins * 0.6), (int) Math.round(coins * 1.4), false);
+			(int) Math.round(coins * 0.6), (int) Math.round(coins * 1.4), false, boneType);
 	}
 
 	private static Monster boss(String id, String name, int level)
@@ -71,7 +82,7 @@ public final class Monsters
 		int maxHit = (int) Math.round(2 + level / 6.0);
 		int coins = (int) Math.round(8 * 2.5 * Math.pow(level, 1.5));
 		return new Monster(id, name, level, hitpoints, level, level, maxHit, 4,
-			(int) Math.round(coins * 0.6), (int) Math.round(coins * 1.4), true);
+			(int) Math.round(coins * 0.6), (int) Math.round(coins * 1.4), true, boneTypeFor(level));
 	}
 
 	/** Falls back to the first monster so an unknown id in a save never breaks the game. */

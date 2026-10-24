@@ -5,7 +5,8 @@ public enum Skill
 	ATTACK("Attack"),
 	STRENGTH("Strength"),
 	DEFENCE("Defence"),
-	HITPOINTS("Hitpoints");
+	HITPOINTS("Hitpoints"),
+	PRAYER("Prayer");
 
 	private final String displayName;
 
@@ -22,6 +23,6 @@ public enum Skill
 	/** Skills the player can pick to receive combat XP (Hitpoints always gets a share). */
 	public boolean isTrainable()
 	{
-		return this != HITPOINTS;
+		return this == ATTACK || this == STRENGTH || this == DEFENCE;
 	}
 }

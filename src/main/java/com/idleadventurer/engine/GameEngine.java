@@ -1,5 +1,6 @@
 package com.idleadventurer.engine;
 
+import java.util.Arrays;
 import java.util.Random;
 
 /**
@@ -25,6 +26,10 @@ public class GameEngine
 	static final double XP_RATE = 1;
 	static final double XP_PER_DAMAGE = 4 * XP_RATE;
 	static final double HITPOINTS_XP_PER_DAMAGE = 1.33 * XP_RATE;
+	/** Potion boosts fade by one level this often (one minute, as in OSRS). */
+	static final int BOOST_DECAY_TICKS = 100;
+	/** Prayer drain effect is spread over this many ticks: effect 1 costs a point every 3 minutes. */
+	static final int PRAYER_DRAIN_DIVISOR = 300;
 
 	private final GameState state;
 	private final Random random;
@@ -191,6 +196,182 @@ public class GameEngine
 		return true;
 	}
 
+	/** The level used in combat rolls: base level plus potion boost, times the active prayer's boost. */
+	public int effectiveLevel(Skill skill)
+	{
+		int percent = 100;
+		for (int i = 0; i < Prayer.ALL.size(); i++)
+		{
+			if (state.activePrayers[i])
+			{
+				Prayer prayer = Prayer.ALL.get(i);
+				percent += skill == Skill.ATTACK ? prayer.getAttackPercent()
+					: skill == Skill.STRENGTH ? prayer.getStrengthPercent()
+					: skill == Skill.DEFENCE ? prayer.getDefencePercent() : 0;
+			}
+		}
+		return (state.level(skill) + state.skillBoost[skill.ordinal()]) * percent / 100;
+	}
+
+	/** Levels currently added by potions (0 when none is active). */
+	public int getBoost(Skill skill)
+	{
+		return state.skillBoost[skill.ordinal()];
+	}
+
+	public double getPrayerPoints()
+	{
+		return state.prayerPoints;
+	}
+
+	public int getPrayerMaxPoints()
+	{
+		return state.level(Skill.PRAYER);
+	}
+
+	public boolean isPrayerActive(int prayerIndex)
+	{
+		return state.activePrayers[prayerIndex];
+	}
+
+	/** Why a prayer cannot be switched on now, or null if it can. */
+	public String prayerBlocker(int prayerIndex)
+	{
+		Prayer prayer = Prayer.ALL.get(prayerIndex);
+		if (state.level(Skill.PRAYER) < prayer.getRequiredPrayerLevel())
+		{
+			return "Needs Prayer " + prayer.getRequiredPrayerLevel();
+		}
+		if (state.level(Skill.DEFENCE) < prayer.getRequiredDefenceLevel())
+		{
+			return "Needs Defence " + prayer.getRequiredDefenceLevel();
+		}
+		if (state.prayerPoints <= 0)
+		{
+			return "No prayer points";
+		}
+		return null;
+	}
+
+	/** Switches a prayer on (turning off any that boost the same stat) or off. */
+	public boolean togglePrayer(int prayerIndex)
+	{
+		if (state.activePrayers[prayerIndex])
+		{
+			state.activePrayers[prayerIndex] = false;
+			return true;
+		}
+		if (prayerBlocker(prayerIndex) != null)
+		{
+			return false;
+		}
+		Prayer prayer = Prayer.ALL.get(prayerIndex);
+		for (int i = 0; i < Prayer.ALL.size(); i++)
+		{
+			if (state.activePrayers[i] && Prayer.ALL.get(i).conflictsWith(prayer))
+			{
+				state.activePrayers[i] = false;
+			}
+		}
+		state.activePrayers[prayerIndex] = true;
+		return true;
+	}
+
+	/** Buries every bone owned for Prayer XP. Returns how many were buried. */
+	public long buryBones()
+	{
+		long buried = 0;
+		double xp = 0;
+		for (int i = 0; i < BoneType.ALL.size(); i++)
+		{
+			buried += state.boneCount[i];
+			xp += state.boneCount[i] * BoneType.ALL.get(i).getXp();
+			state.boneCount[i] = 0;
+		}
+		if (buried > 0)
+		{
+			int levelBefore = state.level(Skill.PRAYER);
+			state.skillXp[Skill.PRAYER.ordinal()] += xp;
+			// Gaining a level also adds the new point to the pool.
+			state.prayerPoints += state.level(Skill.PRAYER) - levelBefore;
+		}
+		return buried;
+	}
+
+	public long totalBones()
+	{
+		long total = 0;
+		for (long count : state.boneCount)
+		{
+			total += count;
+		}
+		return total;
+	}
+
+	/** Why a potion cannot be bought right now, or null if it can. */
+	public String potionBlocker(int potionIndex, int quantity)
+	{
+		Potion potion = Potion.ALL.get(potionIndex);
+		if (state.level(potion.getRequiredSkill()) < potion.getRequiredLevel())
+		{
+			return "Needs " + potion.getRequiredSkill().getDisplayName() + " " + potion.getRequiredLevel();
+		}
+		if (state.coins < (long) potion.getCost() * quantity)
+		{
+			return "Not enough coins";
+		}
+		return null;
+	}
+
+	public boolean buyPotion(int potionIndex, int quantity)
+	{
+		if (quantity <= 0 || potionBlocker(potionIndex, quantity) != null)
+		{
+			return false;
+		}
+		state.coins -= (long) Potion.ALL.get(potionIndex).getCost() * quantity;
+		state.potionCount[potionIndex] += quantity;
+		return true;
+	}
+
+	/** True if a potion is owned and drinking it would change something (nothing is wasted). */
+	public boolean canDrink(int potionIndex)
+	{
+		Potion potion = Potion.ALL.get(potionIndex);
+		if (state.potionCount[potionIndex] <= 0)
+		{
+			return false;
+		}
+		if (potion.isPrayerRestore())
+		{
+			return state.prayerPoints < getPrayerMaxPoints();
+		}
+		Skill skill = potion.getBoostedSkill();
+		return potion.boostFor(state.level(skill)) > state.skillBoost[skill.ordinal()];
+	}
+
+	/** Drinks one potion if canDrink says it helps. */
+	public boolean drink(int potionIndex)
+	{
+		if (!canDrink(potionIndex))
+		{
+			return false;
+		}
+		Potion potion = Potion.ALL.get(potionIndex);
+		if (potion.isPrayerRestore())
+		{
+			int max = getPrayerMaxPoints();
+			state.prayerPoints = Math.min(max, state.prayerPoints + potion.restoreFor(max));
+		}
+		else
+		{
+			Skill skill = potion.getBoostedSkill();
+			state.skillBoost[skill.ordinal()] = potion.boostFor(state.level(skill));
+		}
+		state.potionCount[potionIndex]--;
+		return true;
+	}
+
 	public Zone getZone()
 	{
 		return Monsters.ZONES.get(Monsters.zoneIndex(monster));
@@ -238,6 +419,15 @@ public class GameEngine
 			playerHp++;
 		}
 
+		if (state.totalTicks % BOOST_DECAY_TICKS == 0)
+		{
+			for (int i = 0; i < state.skillBoost.length; i++)
+			{
+				state.skillBoost[i] = Math.max(0, state.skillBoost[i] - 1);
+			}
+		}
+		drainPrayer();
+
 		phaseTicks++;
 		switch (phase)
 		{
@@ -254,6 +444,7 @@ public class GameEngine
 				if (phaseTicks >= RESPAWN_TICKS)
 				{
 					playerHp = getPlayerMaxHp();
+					state.prayerPoints = getPrayerMaxPoints();
 					startWalking();
 				}
 				break;
@@ -302,10 +493,10 @@ public class GameEngine
 	private void playerAttack()
 	{
 		int damage = 0;
-		double chance = CombatMath.playerHitChance(state.level(Skill.ATTACK), attackBonus(), monster.getDefenceLevel());
+		double chance = CombatMath.playerHitChance(effectiveLevel(Skill.ATTACK), attackBonus(), monster.getDefenceLevel());
 		if (random.nextDouble() < chance)
 		{
-			damage = 1 + random.nextInt(CombatMath.playerMaxHit(state.level(Skill.STRENGTH), strengthBonus()));
+			damage = 1 + random.nextInt(CombatMath.playerMaxHit(effectiveLevel(Skill.STRENGTH), strengthBonus()));
 			damage = Math.min(damage, monsterHp);
 		}
 		monsterHp -= damage;
@@ -317,7 +508,7 @@ public class GameEngine
 	{
 		int damage = 0;
 		double chance = CombatMath.monsterHitChance(monster.getAttackLevel(), monster.getAttackBonus(),
-			state.level(Skill.DEFENCE), defenceBonus());
+			effectiveLevel(Skill.DEFENCE), defenceBonus());
 		if (random.nextDouble() < chance)
 		{
 			damage = Math.min(1 + random.nextInt(monster.getMaxHit()), playerHp);
@@ -342,7 +533,7 @@ public class GameEngine
 	private void kill()
 	{
 		state.kills++;
-		state.bones++;
+		state.boneCount[monster.getBoneType()]++;
 		state.coins += monster.getMinCoins() + random.nextInt(monster.getMaxCoins() - monster.getMinCoins() + 1);
 		if (monster.isBoss())
 		{
@@ -362,8 +553,34 @@ public class GameEngine
 		}
 	}
 
+	private void drainPrayer()
+	{
+		int drain = 0;
+		for (int i = 0; i < Prayer.ALL.size(); i++)
+		{
+			if (state.activePrayers[i])
+			{
+				drain += Prayer.ALL.get(i).getDrainEffect();
+			}
+		}
+		if (drain == 0)
+		{
+			return;
+		}
+		state.prayerPoints -= drain / (double) PRAYER_DRAIN_DIVISOR;
+		// The small tolerance absorbs floating-point error from adding up many tiny drains.
+		if (state.prayerPoints <= 1e-9)
+		{
+			state.prayerPoints = 0;
+			Arrays.fill(state.activePrayers, false);
+		}
+	}
+
 	private void die()
 	{
+		// Dying switches prayers off and wears off potions.
+		Arrays.fill(state.activePrayers, false);
+		Arrays.fill(state.skillBoost, 0);
 		state.deaths++;
 		phase = Phase.DEAD;
 		phaseTicks = 0;
