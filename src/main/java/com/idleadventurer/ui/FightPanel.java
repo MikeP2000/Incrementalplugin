@@ -6,6 +6,7 @@ import com.idleadventurer.engine.GameState;
 import com.idleadventurer.engine.Monster;
 import com.idleadventurer.engine.Monsters;
 import com.idleadventurer.engine.Phase;
+import com.idleadventurer.engine.Potion;
 import com.idleadventurer.engine.Skill;
 import com.idleadventurer.engine.XpTable;
 import com.idleadventurer.engine.Zone;
@@ -54,6 +55,7 @@ public class FightPanel extends JPanel
 	private final JLabel killsLabel = new JLabel();
 	private final JLabel bonusLabel = new JLabel();
 	private final List<JButton> eatButtons = new ArrayList<>();
+	private final List<JButton> drinkButtons = new ArrayList<>();
 	private final Map<Skill, JProgressBar> skillBars = new EnumMap<>(Skill.class);
 	private final Map<Skill, JLabel> skillLabels = new EnumMap<>(Skill.class);
 
@@ -175,7 +177,7 @@ public class FightPanel extends JPanel
 		return row;
 	}
 
-	/** One Eat button per food, shown only while you own some. */
+	/** One Eat button per food and one Drink button per boost potion, shown only while you own some. */
 	private JPanel buildEatRow()
 	{
 		// BoxLayout so hidden buttons take no space.
@@ -198,6 +200,26 @@ public class FightPanel extends JPanel
 			});
 			eatButtons.add(button);
 			row.add(button);
+		}
+		for (int i = 0; i < Potion.ALL.size(); i++)
+		{
+			int index = i;
+			JButton button = new JButton();
+			button.setFocusable(false);
+			button.setVisible(false);
+			button.setAlignmentX(LEFT_ALIGNMENT);
+			button.setMaximumSize(new Dimension(Integer.MAX_VALUE, button.getPreferredSize().height + 8));
+			button.addActionListener(e ->
+			{
+				engine.drink(index);
+				update();
+			});
+			drinkButtons.add(button);
+			// The prayer potion lives on the Prayer tab.
+			if (!Potion.ALL.get(i).isPrayerRestore())
+			{
+				row.add(button);
+			}
 		}
 		return row;
 	}
@@ -306,7 +328,7 @@ public class FightPanel extends JPanel
 		}
 
 		coinsLabel.setText("Coins: " + numbers.format(state.coins));
-		bonesLabel.setText("Bones: " + numbers.format(state.bones));
+		bonesLabel.setText("Bones: " + numbers.format(engine.totalBones()));
 		killsLabel.setText("Kills: " + numbers.format(state.kills) + "   Deaths: " + numbers.format(state.deaths));
 
 		bonusLabel.setText("Bonuses: +" + engine.attackBonus() + " acc, +" + engine.strengthBonus()
@@ -322,14 +344,31 @@ public class FightPanel extends JPanel
 				&& engine.getPhase() != Phase.DEAD);
 		}
 
+		for (int i = 0; i < drinkButtons.size(); i++)
+		{
+			Potion potion = Potion.ALL.get(i);
+			JButton button = drinkButtons.get(i);
+			button.setVisible(state.potionCount[i] > 0);
+			button.setText("Drink " + potion.getName() + " x" + state.potionCount[i]);
+			button.setEnabled(engine.canDrink(i));
+		}
+
 		for (Skill skill : Skill.values())
 		{
 			int level = state.level(skill);
 			double xp = state.xp(skill);
 			String text = skill.getDisplayName() + " " + level;
+			if (engine.getBoost(skill) > 0)
+			{
+				text += " (+" + engine.getBoost(skill) + ")";
+			}
 			if (skill == Skill.HITPOINTS)
 			{
 				text += "  (" + engine.getPlayerHp() + "/" + engine.getPlayerMaxHp() + ")";
+			}
+			else if (skill == Skill.PRAYER)
+			{
+				text += "  (" + (int) Math.ceil(engine.getPrayerPoints()) + "/" + engine.getPrayerMaxPoints() + ")";
 			}
 			skillLabels.get(skill).setText(text);
 
