@@ -1,7 +1,7 @@
 package com.idleadventurer.engine;
 
 /**
- * Simplified OSRS combat formulas. No equipment bonuses yet, so every bonus term is the base 64.
+ * Simplified OSRS melee formulas. Each bonus is added to the base 64, as in OSRS.
  */
 public final class CombatMath
 {
@@ -11,20 +11,20 @@ public final class CombatMath
 	{
 	}
 
-	public static int playerMaxHit(int strengthLevel)
+	public static int playerMaxHit(int strengthLevel, int strengthBonus)
 	{
 		int effective = strengthLevel + 8;
-		return (int) Math.floor(0.5 + effective * BASE_BONUS / 640.0);
+		return (int) Math.floor(0.5 + effective * (strengthBonus + BASE_BONUS) / 640.0);
 	}
 
-	public static double playerHitChance(int attackLevel, int monsterDefenceLevel)
+	public static double playerHitChance(int attackLevel, int attackBonus, int monsterDefenceLevel)
 	{
-		return hitChance((attackLevel + 8) * BASE_BONUS, (monsterDefenceLevel + 9) * BASE_BONUS);
+		return hitChance((attackLevel + 8) * (attackBonus + BASE_BONUS), (monsterDefenceLevel + 9) * BASE_BONUS);
 	}
 
-	public static double monsterHitChance(int monsterAttackLevel, int defenceLevel)
+	public static double monsterHitChance(int monsterAttackLevel, int defenceLevel, int defenceBonus)
 	{
-		return hitChance((monsterAttackLevel + 9) * BASE_BONUS, (defenceLevel + 8) * BASE_BONUS);
+		return hitChance((monsterAttackLevel + 9) * BASE_BONUS, (defenceLevel + 8) * (defenceBonus + BASE_BONUS));
 	}
 
 	private static double hitChance(int attackRoll, int defenceRoll)
