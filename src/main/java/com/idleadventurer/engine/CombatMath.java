@@ -22,9 +22,11 @@ public final class CombatMath
 		return hitChance((attackLevel + 8) * (attackBonus + BASE_BONUS), (monsterDefenceLevel + 9) * BASE_BONUS);
 	}
 
-	public static double monsterHitChance(int monsterAttackLevel, int defenceLevel, int defenceBonus)
+	public static double monsterHitChance(int monsterAttackLevel, int monsterAttackBonus, int defenceLevel,
+		int defenceBonus)
 	{
-		return hitChance((monsterAttackLevel + 9) * BASE_BONUS, (defenceLevel + 8) * (defenceBonus + BASE_BONUS));
+		return hitChance((monsterAttackLevel + 9) * (monsterAttackBonus + BASE_BONUS),
+			(defenceLevel + 8) * (defenceBonus + BASE_BONUS));
 	}
 
 	private static double hitChance(int attackRoll, int defenceRoll)

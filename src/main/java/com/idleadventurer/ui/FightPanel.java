@@ -8,6 +8,7 @@ import com.idleadventurer.engine.Monsters;
 import com.idleadventurer.engine.Phase;
 import com.idleadventurer.engine.Skill;
 import com.idleadventurer.engine.XpTable;
+import com.idleadventurer.engine.Zone;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -43,6 +44,11 @@ public class FightPanel extends JPanel
 
 	private final ScenePanel scene = new ScenePanel();
 	private final JLabel statusLabel = new JLabel(" ");
+	private final JLabel goalLabel = new JLabel(" ");
+	private final JComboBox<Zone> zoneBox = new JComboBox<>();
+	private final JComboBox<Monster> monsterBox = new JComboBox<>();
+	private int shownZones;
+	private boolean adjusting;
 	private final JLabel coinsLabel = new JLabel();
 	private final JLabel bonesLabel = new JLabel();
 	private final JLabel killsLabel = new JLabel();
@@ -62,9 +68,12 @@ public class FightPanel extends JPanel
 		content.setOpaque(false);
 
 		statusLabel.setForeground(Color.WHITE);
-		statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 6, 0));
+		statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 2, 0));
+		goalLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		goalLabel.setFont(goalLabel.getFont().deriveFont(11f));
+		goalLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
 
-		for (JComponent part : new JComponent[]{scene, statusLabel, buildTargetRow(), buildResourceRow(), buildEatRow(), buildSkillRows()})
+		for (JComponent part : new JComponent[]{scene, statusLabel, goalLabel, buildTargetRow(), buildResourceRow(), buildEatRow(), buildSkillRows()})
 		{
 			part.setAlignmentX(LEFT_ALIGNMENT);
 			content.add(part);
@@ -81,14 +90,27 @@ public class FightPanel extends JPanel
 		row.setOpaque(false);
 		row.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
-		JComboBox<Monster> monsterBox = new JComboBox<>();
-		for (Monster monster : Monsters.LUMBRIDGE)
+		zoneBox.setRenderer(FightPanel.<Zone>renderer(Zone::getName));
+		monsterBox.setRenderer(FightPanel.<Monster>renderer(m -> m.isBoss()
+			? m.getName() + " (boss)"
+			: m.getName() + " (lvl " + m.getCombatLevel() + ")"));
+		populateZones();
+		zoneBox.addActionListener(e ->
 		{
-			monsterBox.addItem(monster);
-		}
-		monsterBox.setRenderer(FightPanel.<Monster>renderer(m -> m.getName() + " (lvl " + m.getCombatLevel() + ")"));
-		monsterBox.setSelectedItem(engine.getMonster());
-		monsterBox.addActionListener(e -> engine.setTargetMonster(((Monster) monsterBox.getSelectedItem()).getId()));
+			if (!adjusting && zoneBox.getSelectedItem() != null)
+			{
+				Zone zone = (Zone) zoneBox.getSelectedItem();
+				populateMonsters(zone, zone.getMonsters().get(0));
+				engine.setTargetMonster(zone.getMonsters().get(0).getId());
+			}
+		});
+		monsterBox.addActionListener(e ->
+		{
+			if (!adjusting && monsterBox.getSelectedItem() != null)
+			{
+				engine.setTargetMonster(((Monster) monsterBox.getSelectedItem()).getId());
+			}
+		});
 
 		JComboBox<Skill> styleBox = new JComboBox<>();
 		for (Skill skill : Skill.values())
@@ -102,10 +124,40 @@ public class FightPanel extends JPanel
 		styleBox.setSelectedItem(engine.getState().trainingSkill);
 		styleBox.addActionListener(e -> engine.setTrainingSkill((Skill) styleBox.getSelectedItem()));
 
+		row.add(labelled("Zone", zoneBox));
+		row.add(Box.createVerticalStrut(4));
 		row.add(labelled("Fight", monsterBox));
 		row.add(Box.createVerticalStrut(4));
 		row.add(labelled("Train", styleBox));
 		return row;
+	}
+
+	/** Lists the unlocked zones and selects the one being fought in. */
+	private void populateZones()
+	{
+		adjusting = true;
+		zoneBox.removeAllItems();
+		for (int i = 0; i < engine.getState().unlockedZones; i++)
+		{
+			zoneBox.addItem(Monsters.ZONES.get(i));
+		}
+		shownZones = engine.getState().unlockedZones;
+		zoneBox.setSelectedItem(engine.getZone());
+		populateMonsters(engine.getZone(), engine.getMonster());
+		adjusting = false;
+	}
+
+	private void populateMonsters(Zone zone, Monster selected)
+	{
+		boolean wasAdjusting = adjusting;
+		adjusting = true;
+		monsterBox.removeAllItems();
+		for (Monster monster : zone.getMonsters())
+		{
+			monsterBox.addItem(monster);
+		}
+		monsterBox.setSelectedItem(selected);
+		adjusting = wasAdjusting;
 	}
 
 	private JPanel buildResourceRow()
@@ -195,7 +247,7 @@ public class FightPanel extends JPanel
 		JPanel row = new JPanel(new BorderLayout(6, 0));
 		row.setOpaque(false);
 		JLabel label = label(text);
-		label.setPreferredSize(new Dimension(40, 0));
+		label.setPreferredSize(new Dimension(36, 0));
 		row.add(label, BorderLayout.WEST);
 		row.add(field, BorderLayout.CENTER);
 		row.setAlignmentX(LEFT_ALIGNMENT);
@@ -214,18 +266,43 @@ public class FightPanel extends JPanel
 		GameState state = engine.getState();
 		scene.update(engine);
 
-		String monsterName = engine.getMonster().getName();
-		switch (engine.getPhase())
+		if (state.unlockedZones != shownZones)
 		{
-			case WALKING:
-				statusLabel.setText("Walking to a " + monsterName + "...");
-				break;
-			case FIGHTING:
-				statusLabel.setText("Fighting a " + monsterName);
-				break;
-			default:
-				statusLabel.setText("Knocked out! Respawning...");
-				break;
+			populateZones();
+		}
+
+		Monster monster = engine.getMonster();
+		String monsterName = monster.isBoss() ? "the " + monster.getName() : "a " + monster.getName();
+		String unlocked = engine.getUnlockNotice();
+		statusLabel.setForeground(unlocked != null ? ColorScheme.BRAND_ORANGE : Color.WHITE);
+		if (unlocked != null)
+		{
+			statusLabel.setText("Zone unlocked: " + unlocked + "!");
+		}
+		else
+		{
+			switch (engine.getPhase())
+			{
+				case WALKING:
+					statusLabel.setText("Walking to " + monsterName + "...");
+					break;
+				case FIGHTING:
+					statusLabel.setText("Fighting " + monsterName);
+					break;
+				default:
+					statusLabel.setText("Knocked out! Respawning...");
+					break;
+			}
+		}
+		if (state.unlockedZones < Monsters.ZONES.size())
+		{
+			Zone current = Monsters.ZONES.get(state.unlockedZones - 1);
+			goalLabel.setText("<html><body style='width: 165px'>Beat the " + current.getBoss().getName()
+				+ " to unlock " + Monsters.ZONES.get(state.unlockedZones).getName() + "</body></html>");
+		}
+		else
+		{
+			goalLabel.setText("Every zone unlocked");
 		}
 
 		coinsLabel.setText("Coins: " + numbers.format(state.coins));

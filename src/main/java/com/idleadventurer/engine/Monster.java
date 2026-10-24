@@ -15,9 +15,10 @@ public class Monster
 	private final int attackSpeedTicks;
 	private final int minCoins;
 	private final int maxCoins;
+	private final boolean boss;
 
 	public Monster(String id, String name, int combatLevel, int hitpoints, int attackLevel, int defenceLevel,
-		int maxHit, int attackSpeedTicks, int minCoins, int maxCoins)
+		int maxHit, int attackSpeedTicks, int minCoins, int maxCoins, boolean boss)
 	{
 		this.id = id;
 		this.name = name;
@@ -29,6 +30,7 @@ public class Monster
 		this.attackSpeedTicks = attackSpeedTicks;
 		this.minCoins = minCoins;
 		this.maxCoins = maxCoins;
+		this.boss = boss;
 	}
 
 	public String getId()
@@ -56,6 +58,12 @@ public class Monster
 		return attackLevel;
 	}
 
+	/** Monsters hit harder as they level, so armour has to keep pace; the bonus matches the attack level. */
+	public int getAttackBonus()
+	{
+		return attackLevel;
+	}
+
 	public int getDefenceLevel()
 	{
 		return defenceLevel;
@@ -79,5 +87,11 @@ public class Monster
 	public int getMaxCoins()
 	{
 		return maxCoins;
+	}
+
+	/** Beating a zone's boss for the first time unlocks the next zone. */
+	public boolean isBoss()
+	{
+		return boss;
 	}
 }

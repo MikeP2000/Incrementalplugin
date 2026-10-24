@@ -7,7 +7,7 @@ package com.idleadventurer.engine;
 public class GameState
 {
 	/** Bumped when the save layout changes, so old saves can be migrated. */
-	public static final int CURRENT_VERSION = 3;
+	public static final int CURRENT_VERSION = 4;
 
 	/** Hitpoints start at level 10, as in OSRS. */
 	public static final double STARTING_HITPOINTS_XP = 1154;
@@ -33,6 +33,9 @@ public class GameState
 
 	/** Food owned per entry of {@link Food#ALL}. */
 	public int[] foodCount = new int[Food.ALL.size()];
+
+	/** How many zones can be entered; beating a zone's boss unlocks the next. */
+	public int unlockedZones = 1;
 
 	/** Id of the monster being hunted. */
 	public String targetMonster = "chicken";
@@ -82,7 +85,8 @@ public class GameState
 		{
 			trainingSkill = Skill.STRENGTH;
 		}
-		if (targetMonster == null)
+		unlockedZones = Math.max(1, Math.min(unlockedZones, Monsters.ZONES.size()));
+		if (targetMonster == null || Monsters.zoneIndex(Monsters.byId(targetMonster)) >= unlockedZones)
 		{
 			targetMonster = "chicken";
 		}

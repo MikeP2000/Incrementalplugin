@@ -185,4 +185,105 @@ public class GameEngineTest
 		assertEquals(null, engine.getEquipped(Slot.BODY));
 		assertEquals(Food.ALL.size(), state.foodCount.length);
 	}
+
+	private static GameEngine strongPlayer(GameState state, long seed)
+	{
+		for (Skill skill : Skill.values())
+		{
+			state.skillXp[skill.ordinal()] = XpTable.xpForLevel(80);
+		}
+		state.coins = 10_000_000;
+		GameEngine engine = new GameEngine(state, new Random(seed));
+		for (Slot slot : Slot.values())
+		{
+			for (int tier = 0; tier < Gear.tierCount(); tier++)
+			{
+				engine.buyGear(Gear.get(slot, tier));
+			}
+		}
+		state.foodCount[Food.ALL.size() - 1] = 1000;
+		return engine;
+	}
+
+	private static void tickUntilKills(GameEngine engine, long kills)
+	{
+		int shark = Food.ALL.size() - 1;
+		int guard = 0;
+		while (engine.getState().kills < kills && guard++ < 50_000)
+		{
+			engine.tick();
+			if (engine.getPlayerHp() * 2 <= engine.getPlayerMaxHp())
+			{
+				engine.eat(shark);
+			}
+		}
+		assertTrue("fight never finished", engine.getState().kills >= kills);
+	}
+
+	@Test
+	public void lockedZonesCannotBeEntered()
+	{
+		GameEngine engine = new GameEngine(new GameState(), new Random(1));
+		engine.setTargetMonster("zombie");
+		assertEquals("chicken", engine.getState().targetMonster);
+		assertEquals("Chicken", engine.getMonster().getName());
+	}
+
+	@Test
+	public void beatingABossUnlocksTheNextZoneOnce()
+	{
+		GameState state = new GameState();
+		GameEngine engine = strongPlayer(state, 1);
+		assertEquals(1, state.unlockedZones);
+		engine.setTargetMonster("goblin_champion");
+		tickUntilKills(engine, 1);
+		assertEquals(2, state.unlockedZones);
+		assertEquals("Varrock Sewers", engine.getUnlockNotice());
+
+		engine.setTargetMonster("zombie");
+		assertEquals("Zombie", engine.getMonster().getName());
+
+		// Killing the same boss again does not skip ahead.
+		engine.setTargetMonster("goblin_champion");
+		tickUntilKills(engine, 2);
+		assertEquals(2, state.unlockedZones);
+	}
+
+	@Test
+	public void unlockNoticeFades()
+	{
+		GameState state = new GameState();
+		GameEngine engine = strongPlayer(state, 1);
+		engine.setTargetMonster("goblin_champion");
+		tickUntilKills(engine, 1);
+		tick(engine, GameEngine.UNLOCK_NOTICE_TICKS);
+		assertEquals(null, engine.getUnlockNotice());
+	}
+
+	@Test
+	public void savedTargetInALockedZoneFallsBack()
+	{
+		GameState state = new GameState();
+		state.targetMonster = "abyssal_sire";
+		GameEngine engine = new GameEngine(state, new Random(1));
+		assertEquals("Chicken", engine.getMonster().getName());
+	}
+
+	@Test
+	public void everyZoneEndsWithItsOnlyBoss()
+	{
+		for (Zone zone : Monsters.ZONES)
+		{
+			int bosses = 0;
+			for (Monster monster : zone.getMonsters())
+			{
+				if (monster.isBoss())
+				{
+					bosses++;
+				}
+			}
+			assertEquals(1, bosses);
+			assertTrue(zone.getBoss().isBoss());
+		}
+	}
 }

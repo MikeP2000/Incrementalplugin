@@ -17,6 +17,8 @@ public class GameEngine
 	static final int PLAYER_ATTACK_TICKS = 4;
 	/** Eating in a fight delays the next swing, as in OSRS. */
 	static final int EAT_DELAY_TICKS = 3;
+	/** How long the "zone unlocked" notice stays up (about 12 seconds). */
+	static final int UNLOCK_NOTICE_TICKS = 20;
 	/** One hit point is restored this often, so a long fight is not a coin flip. */
 	static final int REGEN_TICKS = 10;
 	/** Multiplier on OSRS XP rates; 1 matches OSRS (4 XP per damage, 1.33 to Hitpoints). */
@@ -36,6 +38,8 @@ public class GameEngine
 	private int monsterCooldown;
 	private int lastPlayerHit;
 	private int lastMonsterHit;
+	private String unlockNotice;
+	private int unlockNoticeTicks;
 
 	public GameEngine(GameState state)
 	{
@@ -187,8 +191,23 @@ public class GameEngine
 		return true;
 	}
 
+	public Zone getZone()
+	{
+		return Monsters.ZONES.get(Monsters.zoneIndex(monster));
+	}
+
+	/** Name of a zone unlocked in the last few ticks, or null; the panel shows it as a notice. */
+	public String getUnlockNotice()
+	{
+		return unlockNoticeTicks > 0 ? unlockNotice : null;
+	}
+
 	public void setTargetMonster(String monsterId)
 	{
+		if (Monsters.zoneIndex(Monsters.byId(monsterId)) >= state.unlockedZones)
+		{
+			return;
+		}
 		if (!monsterId.equals(state.targetMonster))
 		{
 			state.targetMonster = monsterId;
@@ -209,6 +228,10 @@ public class GameEngine
 		state.totalTicks++;
 		lastPlayerHit = -1;
 		lastMonsterHit = -1;
+		if (unlockNoticeTicks > 0)
+		{
+			unlockNoticeTicks--;
+		}
 
 		if (phase != Phase.DEAD && playerHp < getPlayerMaxHp() && state.totalTicks % REGEN_TICKS == 0)
 		{
@@ -293,7 +316,8 @@ public class GameEngine
 	private void monsterAttack()
 	{
 		int damage = 0;
-		double chance = CombatMath.monsterHitChance(monster.getAttackLevel(), state.level(Skill.DEFENCE), defenceBonus());
+		double chance = CombatMath.monsterHitChance(monster.getAttackLevel(), monster.getAttackBonus(),
+			state.level(Skill.DEFENCE), defenceBonus());
 		if (random.nextDouble() < chance)
 		{
 			damage = Math.min(1 + random.nextInt(monster.getMaxHit()), playerHp);
@@ -320,7 +344,22 @@ public class GameEngine
 		state.kills++;
 		state.bones++;
 		state.coins += monster.getMinCoins() + random.nextInt(monster.getMaxCoins() - monster.getMinCoins() + 1);
+		if (monster.isBoss())
+		{
+			unlockNextZone();
+		}
 		startWalking();
+	}
+
+	private void unlockNextZone()
+	{
+		int next = Monsters.zoneIndex(monster) + 1;
+		if (next == state.unlockedZones && next < Monsters.ZONES.size())
+		{
+			state.unlockedZones++;
+			unlockNotice = Monsters.ZONES.get(next).getName();
+			unlockNoticeTicks = UNLOCK_NOTICE_TICKS;
+		}
 	}
 
 	private void die()
