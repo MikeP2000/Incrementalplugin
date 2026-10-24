@@ -27,7 +27,7 @@ public class CombatMathTest
 	{
 		assertTrue(CombatMath.playerMaxHit(40, 44) > CombatMath.playerMaxHit(40, 0));
 		assertTrue(CombatMath.playerHitChance(40, 45, 30) > CombatMath.playerHitChance(40, 0, 30));
-		assertTrue(CombatMath.monsterHitChance(10, 40, 200) < CombatMath.monsterHitChance(10, 40, 0));
+		assertTrue(CombatMath.monsterHitChance(10, 10, 40, 200) < CombatMath.monsterHitChance(10, 10, 40, 0));
 	}
 
 	@Test

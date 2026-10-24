@@ -18,8 +18,8 @@ import javax.swing.JPanel;
 public class ScenePanel extends JPanel
 {
 	private static final int WIDTH = 225;
-	private static final int HEIGHT = 120;
-	private static final int GROUND_Y = 92;
+	private static final int HEIGHT = 140;
+	private static final int GROUND_Y = 112;
 	private static final int PLAYER_X = 40;
 	private static final int MONSTER_X = 165;
 	private static final int MONSTER_START_X = 235;
@@ -33,6 +33,8 @@ public class ScenePanel extends JPanel
 	private Phase phase = Phase.WALKING;
 	private double walkProgress;
 	private String monsterId = "chicken";
+	private String monsterName = "Chicken";
+	private boolean monsterIsBoss;
 	private int playerHp = 10;
 	private int playerMaxHp = 10;
 	private int monsterHp = 1;
@@ -55,6 +57,8 @@ public class ScenePanel extends JPanel
 		phase = engine.getPhase();
 		walkProgress = engine.getWalkProgress();
 		monsterId = engine.getMonster().getId();
+		monsterName = engine.getMonster().getName();
+		monsterIsBoss = engine.getMonster().isBoss();
 		playerHp = engine.getPlayerHp();
 		playerMaxHp = engine.getPlayerMaxHp();
 		monsterHp = engine.getMonsterHp();
@@ -99,12 +103,13 @@ public class ScenePanel extends JPanel
 			drawMonster(g, monsterX);
 			if (phase == Phase.FIGHTING)
 			{
+				drawName(g, MONSTER_X, 14, monsterName);
 				drawBar(g, MONSTER_X, 18, monsterHp, monsterMaxHp);
-				drawSplat(g, MONSTER_X, 56, monsterSplat, monsterSplatTicks);
+				drawSplat(g, MONSTER_X, 70, monsterSplat, monsterSplatTicks);
 			}
 		}
 		drawBar(g, PLAYER_X, 18, playerHp, playerMaxHp);
-		drawSplat(g, PLAYER_X, 56, playerSplat, playerSplatTicks);
+		drawSplat(g, PLAYER_X, 70, playerSplat, playerSplatTicks);
 		g.dispose();
 	}
 
@@ -166,8 +171,7 @@ public class ScenePanel extends JPanel
 				g.fillRect(x - 4, GROUND_Y - 40, 2, 2);
 				g.fillRect(x + 2, GROUND_Y - 40, 2, 2);
 				break;
-			default:
-				// Chicken.
+			case "chicken":
 				g.setColor(new Color(250, 250, 245));
 				g.fillRect(x - 9, GROUND_Y - 18, 18, 12);
 				g.fillRect(x - 13, GROUND_Y - 26, 8, 10);
@@ -179,7 +183,71 @@ public class ScenePanel extends JPanel
 				g.fillRect(x - 4, GROUND_Y - 6, 2, 6);
 				g.fillRect(x + 2, GROUND_Y - 6, 2, 6);
 				break;
+			default:
+				drawCreature(g, x, MonsterArt.of(monsterId));
+				break;
 		}
+	}
+
+	/** Draws a creature at ground level around x, from a shape, two colours and a scale. */
+	private void drawCreature(Graphics2D g, int x, MonsterArt art)
+	{
+		Graphics2D c = (Graphics2D) g.create();
+		c.translate(x, GROUND_Y);
+		c.scale(art.scale, art.scale);
+		switch (art.shape)
+		{
+			case BEAST:
+				c.setColor(art.accent);
+				c.fillRect(-10, -6, 3, 6);
+				c.fillRect(7, -6, 3, 6);
+				c.fillPolygon(new int[]{14, 24, 14}, new int[]{-16, -22, -10}, 3);
+				c.setColor(art.body);
+				c.fillRect(-14, -18, 28, 12);
+				c.fillRect(-23, -24, 11, 11);
+				c.setColor(art.accent);
+				c.fillRect(-21, -22, 2, 2);
+				break;
+			case DRAGON:
+				c.setColor(art.accent);
+				c.fillPolygon(new int[]{-6, 10, 20}, new int[]{-26, -56, -26}, 3);
+				c.fillRect(-12, -8, 5, 8);
+				c.fillRect(8, -8, 5, 8);
+				c.setColor(art.body);
+				c.fillPolygon(new int[]{18, 40, 18}, new int[]{-22, -8, -14}, 3);
+				c.fillRect(-18, -26, 36, 18);
+				c.fillRect(-24, -42, 9, 18);
+				c.fillRect(-34, -46, 15, 10);
+				c.setColor(Color.YELLOW);
+				c.fillRect(-28, -44, 3, 3);
+				break;
+			default:
+				c.setColor(art.accent);
+				c.fillRect(-6, -12, 5, 12);
+				c.fillRect(1, -12, 5, 12);
+				c.fillRect(-9, -32, 18, 21);
+				c.setColor(art.body);
+				c.fillRect(-11, -32, 4, 18);
+				c.fillRect(7, -32, 4, 18);
+				c.fillRect(-6, -46, 12, 13);
+				c.setColor(Color.RED);
+				c.fillRect(-4, -42, 2, 2);
+				c.fillRect(2, -42, 2, 2);
+				break;
+		}
+		c.dispose();
+	}
+
+	private void drawName(Graphics2D g, int centerX, int y, String name)
+	{
+		g.setFont(g.getFont().deriveFont(Font.BOLD, 10f));
+		FontMetrics metrics = g.getFontMetrics();
+		int left = Math.max(2, Math.min(centerX - metrics.stringWidth(name) / 2,
+			getWidth() - metrics.stringWidth(name) - 2));
+		g.setColor(Color.BLACK);
+		g.drawString(name, left + 1, y + 1);
+		g.setColor(monsterIsBoss ? new Color(255, 200, 60) : Color.WHITE);
+		g.drawString(name, left, y);
 	}
 
 	/** OSRS-style hit point bar: green remaining, red lost. */
